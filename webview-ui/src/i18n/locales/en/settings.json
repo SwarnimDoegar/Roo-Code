@@ -889,6 +889,10 @@
 			"refreshSuccess": "Tools refreshed successfully",
 			"refreshError": "Failed to refresh tools",
 			"toolParameters": "Parameters"
+		},
+		"CAVEMAN_MODE": {
+			"name": "Enable caveman mode",
+			"description": "When enabled, system prompts use compressed caveman-style language — cutting ~75%% of prompt tokens while keeping full technical accuracy. Experimental: may affect model behavior."
 		}
 	},
 	"promptCaching": {

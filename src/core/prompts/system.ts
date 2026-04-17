@@ -6,12 +6,15 @@ import { Mode, modes, defaultModeSlug, getModeBySlug, getGroupName, getModeSelec
 import { DiffStrategy } from "../../shared/tools"
 import { formatLanguage } from "../../shared/language"
 import { isEmpty } from "../../utils/object"
+import { EXPERIMENT_IDS, experiments as experimentsUtil } from "../../shared/experiments"
 
 import { McpHub } from "../../services/mcp/McpHub"
 import { CodeIndexManager } from "../../services/code-index/manager"
 import { SkillsManager } from "../../services/skills/SkillsManager"
 
 import type { SystemPromptSettings } from "./types"
+
+// Standard sections
 import {
 	getRulesSection,
 	getSystemInfoSection,
@@ -24,6 +27,21 @@ import {
 	markdownFormattingSection,
 	getSkillsSection,
 } from "./sections"
+
+// Caveman sections (same signatures, caveman lingo)
+import {
+	getRulesSection as getCavemanRulesSection,
+	getSystemInfoSection as getCavemanSystemInfoSection,
+	getObjectiveSection as getCavemanObjectiveSection,
+	getSharedToolUseSection as getCavemanSharedToolUseSection,
+	getToolUseGuidelinesSection as getCavemanToolUseGuidelinesSection,
+	getCapabilitiesSection as getCavemanCapabilitiesSection,
+	getModesSection as getCavemanModesSection,
+	addCustomInstructions as cavemanAddCustomInstructions,
+	markdownFormattingSection as cavemanMarkdownFormattingSection,
+	getSkillsSection as getCavemanSkillsSection,
+	getCavemanModeSection,
+} from "./caveman_sections"
 
 // Helper function to get prompt component, filtering out empty objects
 export function getPromptComponent(
@@ -60,6 +78,25 @@ async function generatePrompt(
 		throw new Error("Extension context is required for generating system prompt")
 	}
 
+	// Check if caveman mode experiment is enabled
+	const isCavemanMode = experiments
+		? experimentsUtil.isEnabled(experiments as any, EXPERIMENT_IDS.CAVEMAN_MODE)
+		: false
+
+	// Select section functions based on caveman mode
+	const _getRulesSection = isCavemanMode ? getCavemanRulesSection : getRulesSection
+	const _getSystemInfoSection = isCavemanMode ? getCavemanSystemInfoSection : getSystemInfoSection
+	const _getObjectiveSection = isCavemanMode ? getCavemanObjectiveSection : getObjectiveSection
+	const _getSharedToolUseSection = isCavemanMode ? getCavemanSharedToolUseSection : getSharedToolUseSection
+	const _getToolUseGuidelinesSection = isCavemanMode
+		? getCavemanToolUseGuidelinesSection
+		: getToolUseGuidelinesSection
+	const _getCapabilitiesSection = isCavemanMode ? getCavemanCapabilitiesSection : getCapabilitiesSection
+	const _getModesSection = isCavemanMode ? getCavemanModesSection : getModesSection
+	const _addCustomInstructions = isCavemanMode ? cavemanAddCustomInstructions : addCustomInstructions
+	const _markdownFormattingSection = isCavemanMode ? cavemanMarkdownFormattingSection : markdownFormattingSection
+	const _getSkillsSection = isCavemanMode ? getCavemanSkillsSection : getSkillsSection
+
 	// Get the full mode config to ensure we have the role definition (used for groups, etc.)
 	const modeConfig = getModeBySlug(mode, customModeConfigs) || modes.find((m) => m.slug === mode) || modes[0]
 	const { roleDefinition, baseInstructions } = getModeSelection(mode, promptComponent, customModeConfigs)
@@ -75,32 +112,35 @@ async function generatePrompt(
 	const effectiveProtocol = "native"
 
 	const [modesSection, skillsSection] = await Promise.all([
-		getModesSection(context),
-		getSkillsSection(skillsManager, mode as string),
+		_getModesSection(context),
+		_getSkillsSection(skillsManager, mode as string),
 	])
 
 	// Tools catalog is not included in the system prompt.
 	const toolsCatalog = ""
 
+	// Add caveman mode section if enabled
+	const cavemanSection = isCavemanMode ? `\n${getCavemanModeSection()}\n` : ""
+
 	const basePrompt = `${roleDefinition}
+${cavemanSection}
+${_markdownFormattingSection()}
 
-${markdownFormattingSection()}
+${_getSharedToolUseSection()}${toolsCatalog}
 
-${getSharedToolUseSection()}${toolsCatalog}
+	${_getToolUseGuidelinesSection()}
 
-	${getToolUseGuidelinesSection()}
-
-${getCapabilitiesSection(cwd, shouldIncludeMcp ? mcpHub : undefined)}
+${_getCapabilitiesSection(cwd, shouldIncludeMcp ? mcpHub : undefined)}
 
 ${modesSection}
 ${skillsSection ? `\n${skillsSection}` : ""}
-${getRulesSection(cwd, settings)}
+${_getRulesSection(cwd, settings)}
 
-${getSystemInfoSection(cwd)}
+${_getSystemInfoSection(cwd)}
 
-${getObjectiveSection()}
+${_getObjectiveSection()}
 
-${await addCustomInstructions(baseInstructions, globalCustomInstructions || "", cwd, mode, {
+${await _addCustomInstructions(baseInstructions, globalCustomInstructions || "", cwd, mode, {
 	language: language ?? formatLanguage(vscode.env.language),
 	rooIgnoreInstructions,
 	settings,
