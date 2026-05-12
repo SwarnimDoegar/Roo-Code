@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { skillTool } from "../SkillTool"
-import { Task } from "../../task/Task"
+import type { Task } from "../../task/Task"
 import { formatResponse } from "../../prompts/responses"
 import type { ToolUse } from "../../../shared/tools"
 
@@ -297,6 +297,37 @@ Step 1: Create the server...`,
 		expect(mockCallbacks.pushToolResult).toHaveBeenCalledWith(
 			formatResponse.toolError("Skills Manager not available"),
 		)
+	})
+
+	it("should block reloading the same skill in the same task", async () => {
+		const block: ToolUse<"skill"> = {
+			type: "tool_use" as const,
+			name: "skill" as const,
+			params: {},
+			partial: false,
+			nativeArgs: {
+				skill: "caveman",
+			},
+		}
+
+		const mockSkillContent = {
+			name: "caveman",
+			description: "Token-efficient communication mode",
+			source: "global",
+			instructions: "Use compressed style",
+		}
+
+		mockSkillsManager.getSkillContent.mockResolvedValue(mockSkillContent)
+
+		await skillTool.handle(mockTask as Task, block, mockCallbacks)
+		await skillTool.handle(mockTask as Task, block, mockCallbacks)
+
+		expect(mockCallbacks.pushToolResult).toHaveBeenLastCalledWith(
+			formatResponse.toolError(
+				"Skill 'caveman' is already loaded in this task. Do not reload it repeatedly; continue with its instructions or pick a different skill only if needed.",
+			),
+		)
+		expect(mockTask.recordToolError).toHaveBeenCalledWith("skill")
 	})
 
 	it("should load project skill", async () => {

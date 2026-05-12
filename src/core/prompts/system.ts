@@ -43,6 +43,20 @@ import {
 	getCavemanModeSection,
 } from "./caveman_sections"
 
+// Compact sections (same signatures, terse English; ~45% token reduction)
+import {
+	getRulesSection as getCompactRulesSection,
+	getSystemInfoSection as getCompactSystemInfoSection,
+	getObjectiveSection as getCompactObjectiveSection,
+	getSharedToolUseSection as getCompactSharedToolUseSection,
+	getToolUseGuidelinesSection as getCompactToolUseGuidelinesSection,
+	getCapabilitiesSection as getCompactCapabilitiesSection,
+	getModesSection as getCompactModesSection,
+	addCustomInstructions as compactAddCustomInstructions,
+	markdownFormattingSection as compactMarkdownFormattingSection,
+	getSkillsSection as getCompactSkillsSection,
+} from "./compact_sections"
+
 // Helper function to get prompt component, filtering out empty objects
 export function getPromptComponent(
 	customModePrompts: CustomModePrompts | undefined,
@@ -83,19 +97,63 @@ async function generatePrompt(
 		? experimentsUtil.isEnabled(experiments as any, EXPERIMENT_IDS.CAVEMAN_MODE)
 		: false
 
-	// Select section functions based on caveman mode
-	const _getRulesSection = isCavemanMode ? getCavemanRulesSection : getRulesSection
-	const _getSystemInfoSection = isCavemanMode ? getCavemanSystemInfoSection : getSystemInfoSection
-	const _getObjectiveSection = isCavemanMode ? getCavemanObjectiveSection : getObjectiveSection
-	const _getSharedToolUseSection = isCavemanMode ? getCavemanSharedToolUseSection : getSharedToolUseSection
+	// Check if compact prompt experiment is enabled (mutually exclusive — caveman wins).
+	const isCompactPrompt =
+		!isCavemanMode && experiments
+			? experimentsUtil.isEnabled(experiments as any, EXPERIMENT_IDS.COMPACT_PROMPT)
+			: false
+
+	// Select section functions based on caveman mode, then compact, then standard.
+	const _getRulesSection = isCavemanMode
+		? getCavemanRulesSection
+		: isCompactPrompt
+			? getCompactRulesSection
+			: getRulesSection
+	const _getSystemInfoSection = isCavemanMode
+		? getCavemanSystemInfoSection
+		: isCompactPrompt
+			? getCompactSystemInfoSection
+			: getSystemInfoSection
+	const _getObjectiveSection = isCavemanMode
+		? getCavemanObjectiveSection
+		: isCompactPrompt
+			? getCompactObjectiveSection
+			: getObjectiveSection
+	const _getSharedToolUseSection = isCavemanMode
+		? getCavemanSharedToolUseSection
+		: isCompactPrompt
+			? getCompactSharedToolUseSection
+			: getSharedToolUseSection
 	const _getToolUseGuidelinesSection = isCavemanMode
 		? getCavemanToolUseGuidelinesSection
-		: getToolUseGuidelinesSection
-	const _getCapabilitiesSection = isCavemanMode ? getCavemanCapabilitiesSection : getCapabilitiesSection
-	const _getModesSection = isCavemanMode ? getCavemanModesSection : getModesSection
-	const _addCustomInstructions = isCavemanMode ? cavemanAddCustomInstructions : addCustomInstructions
-	const _markdownFormattingSection = isCavemanMode ? cavemanMarkdownFormattingSection : markdownFormattingSection
-	const _getSkillsSection = isCavemanMode ? getCavemanSkillsSection : getSkillsSection
+		: isCompactPrompt
+			? getCompactToolUseGuidelinesSection
+			: getToolUseGuidelinesSection
+	const _getCapabilitiesSection = isCavemanMode
+		? getCavemanCapabilitiesSection
+		: isCompactPrompt
+			? getCompactCapabilitiesSection
+			: getCapabilitiesSection
+	const _getModesSection = isCavemanMode
+		? getCavemanModesSection
+		: isCompactPrompt
+			? getCompactModesSection
+			: getModesSection
+	const _addCustomInstructions = isCavemanMode
+		? cavemanAddCustomInstructions
+		: isCompactPrompt
+			? compactAddCustomInstructions
+			: addCustomInstructions
+	const _markdownFormattingSection = isCavemanMode
+		? cavemanMarkdownFormattingSection
+		: isCompactPrompt
+			? compactMarkdownFormattingSection
+			: markdownFormattingSection
+	const _getSkillsSection = isCavemanMode
+		? getCavemanSkillsSection
+		: isCompactPrompt
+			? getCompactSkillsSection
+			: getSkillsSection
 
 	// Get the full mode config to ensure we have the role definition (used for groups, etc.)
 	const modeConfig = getModeBySlug(mode, customModeConfigs) || modes.find((m) => m.slug === mode) || modes[0]

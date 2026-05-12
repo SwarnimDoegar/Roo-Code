@@ -488,7 +488,19 @@ export async function addCustomInstructions(
 	}
 
 	if (rules.length > 0) {
-		sections.push(`Rules:\n\n${rules.join("\n\n")}`)
+		// Lazy-load: when the inlined rules exceed the configured byte budget,
+		// replace the inlined contents with a manifest of available rule files
+		// so the model can fetch on demand via read_file.
+		const maxBytes = options.settings?.maxRuleFileBytes ?? 0
+		const joined = rules.join("\n\n")
+		if (maxBytes > 0 && Buffer.byteLength(joined, "utf8") > maxBytes) {
+			const manifest = buildRuleManifest(joined)
+			sections.push(
+				`Rules:\n\nMany rule files are available but not inlined (combined size exceeds ${maxBytes} bytes). Use \`read_file\` on the paths below to load any you need.\n\n${manifest}`,
+			)
+		} else {
+			sections.push(`Rules:\n\n${joined}`)
+		}
 	}
 
 	const joinedSections = sections.join("\n\n")
@@ -504,6 +516,47 @@ The following additional instructions are provided by the user, and should be fo
 ${joinedSections}
 `
 		: ""
+}
+
+/**
+ * Build a compact manifest of rule files from the inlined rules text.
+ * Parses headers of the form `# Rules from <path>:` (and `# Agent Rules ... from <path>:`)
+ * and emits `- <path> — <first non-empty content line, truncated>` lines.
+ * Falls back to listing only the section headers if parsing fails.
+ */
+function buildRuleManifest(inlined: string): string {
+	const lines = inlined.split("\n")
+	const entries: string[] = []
+	let currentPath: string | null = null
+	let currentDesc: string | null = null
+
+	const flush = () => {
+		if (currentPath) {
+			const desc = currentDesc ? ` — ${currentDesc.slice(0, 80)}` : ""
+			entries.push(`- ${currentPath}${desc}`)
+		}
+	}
+
+	const headerRe = /^#\s+(?:Rules from|Agent Rules\s+\S+\s+\(\S+\)\s+from)\s+(.+?):\s*$/
+
+	for (const line of lines) {
+		const m = line.match(headerRe)
+		if (m) {
+			flush()
+			currentPath = m[1].trim()
+			currentDesc = null
+			continue
+		}
+		if (currentPath && currentDesc === null) {
+			const trimmed = line.trim()
+			if (trimmed) {
+				currentDesc = trimmed
+			}
+		}
+	}
+	flush()
+
+	return entries.length > 0 ? entries.join("\n") : "(no rule files discovered)"
 }
 
 /**

@@ -17,15 +17,25 @@ import { arePathsEqual } from "../../utils/path"
 import { formatResponse } from "../prompts/responses"
 import { getGitStatus } from "../../utils/git"
 
-import { Task } from "../task/Task"
+import type { Task } from "../task/Task"
 import { formatReminderSection } from "./reminder"
 
+/**
+ * Per-task snapshot of the last emitted file lists. Used to suppress re-sending
+ * unchanged tab/visible-file lists every turn — emit "unchanged" instead.
+ * Keyed by Task instance so it auto-cleans when the task is GC'd.
+ */
+const lastFileSnapshot = new WeakMap<Task, { visible: string; openTabs: string }>()
 export async function getEnvironmentDetails(cline: Task, includeFileDetails: boolean = false) {
 	let details = ""
 
 	const clineProvider = cline.providerRef.deref()
 	const state = await clineProvider?.getState()
-	const { maxWorkspaceFiles = 200 } = state ?? {}
+	// Default lowered from 200 → 75 to reduce first-turn token cost on large repos.
+	// Users who need more can raise it via the contextManagement.workspaceFiles setting.
+	const { maxWorkspaceFiles = 75 } = state ?? {}
+
+	const snapshot = lastFileSnapshot.get(cline) ?? { visible: "", openTabs: "" }
 
 	// It could be useful for cline to know if the user went from one or no
 	// file to another between messages, so we always include this context.
@@ -41,8 +51,12 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		: visibleFilePaths.map((p) => p.toPosix()).join("\n")
 
 	if (allowedVisibleFiles) {
-		details += "\n\n# VSCode Visible Files"
-		details += `\n${allowedVisibleFiles}`
+		if (allowedVisibleFiles === snapshot.visible) {
+			details += "\n\n# VSCode Visible Files\n(unchanged)"
+		} else {
+			details += "\n\n# VSCode Visible Files"
+			details += `\n${allowedVisibleFiles}`
+		}
 	}
 
 	const { maxOpenTabsContext } = state ?? {}
@@ -61,9 +75,19 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		: openTabPaths.map((p) => p.toPosix()).join("\n")
 
 	if (allowedOpenTabs) {
-		details += "\n\n# VSCode Open Tabs"
-		details += `\n${allowedOpenTabs}`
+		if (allowedOpenTabs === snapshot.openTabs) {
+			details += "\n\n# VSCode Open Tabs\n(unchanged)"
+		} else {
+			details += "\n\n# VSCode Open Tabs"
+			details += `\n${allowedOpenTabs}`
+		}
 	}
+
+	// Update snapshot after both lists computed (strings, not arrays — equality cheap).
+	lastFileSnapshot.set(cline, {
+		visible: typeof allowedVisibleFiles === "string" ? allowedVisibleFiles : "",
+		openTabs: typeof allowedOpenTabs === "string" ? allowedOpenTabs : "",
+	})
 
 	// Get task-specific and background terminals.
 	const busyTerminals = [
@@ -172,19 +196,13 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		details += terminalDetails
 	}
 
-	// Get settings for time and cost display
+	// Get settings for time and cost display.
 	const { includeCurrentTime = true, includeCurrentCost = true, maxGitStatusFiles = 0 } = state ?? {}
 
-	// Add current time information with timezone (if enabled).
+	// Add current time information (if enabled). Single ISO timestamp — the model
+	// can derive the timezone offset from the trailing 'Z' if needed.
 	if (includeCurrentTime) {
-		const now = new Date()
-
-		const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-		const timeZoneOffset = -now.getTimezoneOffset() / 60 // Convert to hours and invert sign to match conventional notation
-		const timeZoneOffsetHours = Math.floor(Math.abs(timeZoneOffset))
-		const timeZoneOffsetMinutes = Math.abs(Math.round((Math.abs(timeZoneOffset) - timeZoneOffsetHours) * 60))
-		const timeZoneOffsetStr = `${timeZoneOffset >= 0 ? "+" : "-"}${timeZoneOffsetHours}:${timeZoneOffsetMinutes.toString().padStart(2, "0")}`
-		details += `\n\n# Current Time\nCurrent time in ISO 8601 UTC format: ${now.toISOString()}\nUser time zone: ${timeZone}, UTC${timeZoneOffsetStr}`
+		details += `\n\n# Current Time\n${new Date().toISOString()}`
 	}
 
 	// Add git status information (if enabled with maxGitStatusFiles > 0).
@@ -235,7 +253,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			// permission popup.
 			details += "(Desktop files not shown automatically. Use list_files to explore if needed.)"
 		} else {
-			const maxFiles = maxWorkspaceFiles ?? 200
+			const maxFiles = maxWorkspaceFiles ?? 75
 
 			// Early return for limit of 0
 			if (maxFiles === 0) {

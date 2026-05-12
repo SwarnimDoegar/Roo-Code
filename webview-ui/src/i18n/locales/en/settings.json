@@ -893,6 +893,10 @@
 		"CAVEMAN_MODE": {
 			"name": "Enable caveman mode",
 			"description": "When enabled, system prompts use compressed caveman-style language — cutting ~75%% of prompt tokens while keeping full technical accuracy. Experimental: may affect model behavior."
+		},
+		"COMPACT_PROMPT": {
+			"name": "Enable compact system prompt",
+			"description": "When enabled, system prompts use a terse English rewrite that preserves all behavioral rules while cutting ~45%% of prompt tokens. Lower risk than caveman mode. Ignored if caveman mode is also enabled."
 		}
 	},
 	"promptCaching": {

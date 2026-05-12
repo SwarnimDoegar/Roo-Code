@@ -1,6 +1,7 @@
-import { Task } from "../task/Task"
+import type { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
-import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { BaseTool } from "./BaseTool"
+import type { ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import {
 	buildSkillApprovalMessage,
@@ -12,6 +13,12 @@ interface SkillParams {
 	skill: string
 	args?: string
 }
+
+type SkillTrackingTask = Task & {
+	loadedSkillsInTask?: Set<string>
+}
+
+const normalizeSkillName = (skillName: string) => skillName.trim().toLowerCase()
 
 export class SkillTool extends BaseTool<"skill"> {
 	readonly name = "skill" as const
@@ -27,6 +34,22 @@ export class SkillTool extends BaseTool<"skill"> {
 				task.recordToolError("skill")
 				task.didToolFailInCurrentTurn = true
 				pushToolResult(await task.sayAndCreateMissingParamError("skill", "skill"))
+				return
+			}
+
+			const normalizedSkillName = normalizeSkillName(skillName)
+			const trackingTask = task as SkillTrackingTask
+			trackingTask.loadedSkillsInTask ??= new Set<string>()
+
+			if (trackingTask.loadedSkillsInTask.has(normalizedSkillName)) {
+				task.consecutiveMistakeCount++
+				task.recordToolError("skill")
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(
+					formatResponse.toolError(
+						`Skill '${skillName}' is already loaded in this task. Do not reload it repeatedly; continue with its instructions or pick a different skill only if needed.`,
+					),
+				)
 				return
 			}
 
@@ -74,6 +97,7 @@ export class SkillTool extends BaseTool<"skill"> {
 				return
 			}
 
+			trackingTask.loadedSkillsInTask.add(normalizedSkillName)
 			pushToolResult(buildSkillResult(skillName, args, skillContent))
 		} catch (error) {
 			await handleError("executing skill", error as Error)

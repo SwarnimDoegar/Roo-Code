@@ -12,6 +12,7 @@ export const experimentIds = [
 	"runSlashCommand",
 	"customTools",
 	"cavemanMode",
+	"compactPrompt",
 ] as const
 
 export const experimentIdsSchema = z.enum(experimentIds)
@@ -28,6 +29,7 @@ export const experimentsSchema = z.object({
 	runSlashCommand: z.boolean().optional(),
 	customTools: z.boolean().optional(),
 	cavemanMode: z.boolean().optional(),
+	compactPrompt: z.boolean().optional(),
 })
 
 export type Experiments = z.infer<typeof experimentsSchema>

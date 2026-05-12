@@ -37,6 +37,12 @@ Example — destructive op:
 > \`\`\`
 > Caveman resume. Verify backup exist first.
 
+## Loop Guard
+
+No loop.
+Never repeat same tool call with same params when it already failed or returned no progress.
+If same approach fail twice: switch strategy, ask focused follow-up, or attempt_completion when done.
+
 ## Boundaries
 
 Code/commits/PRs: write normal. Code blocks: unchanged. Only prose between code get caveman treatment.
